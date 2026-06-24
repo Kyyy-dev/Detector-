@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Deteksi Objek</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    font-family: 'Courier New', monospace;
+    color: #00ffff;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #wrapper {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* HUD overlay top */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #hud-top .title {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: #00ffff;
+    text-shadow: 0 0 8px #00ffff88;
+  }
+
+  #count-badge {
+    background: #00ffff22;
+    border: 1px solid #00ffff66;
+    color: #00ffff;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .corner-tl { top: 46px; left: 10px; border-top: 2px solid #00ffff88; border-left: 2px solid #00ffff88; }
+  .corner-tr { top: 46px; right: 10px; border-top: 2px solid #00ffff88; border-right: 2px solid #00ffff88; }
+  .corner-bl { bottom: 56px; left: 10px; border-bottom: 2px solid #00ffff88; border-left: 2px solid #00ffff88; }
+  .corner-br { bottom: 56px; right: 10px; border-bottom: 2px solid #00ffff88; border-right: 2px solid #00ffff88; }
+
+  /* Bottom bar */
+  #hud-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 8px 14px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #status {
+    font-size: 11px;
+    letter-spacing: 1px;
+    opacity: 0.7;
+  }
+
+  #fps-display {
+    font-size: 11px;
+    letter-spacing: 1px;
+    opacity: 0.7;
+  }
+
+  /* Loading screen */
+  #loading {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    gap: 20px;
+  }
+
+  #loading .logo {
+    font-size: 28px;
+    letter-spacing: 6px;
+    color: #00ffff;
+    text-shadow: 0 0 20px #00ffff;
+  }
+
+  #loading .sub {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #00ffff88;
+  }
+
+  .loader-bar {
+    width: 200px;
+    height: 2px;
+    background: #00ffff22;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .loader-fill {
+    height: 100%;
+    background: #00ffff;
+    box-shadow: 0 0 8px #00ffff;
+    animation: load 2s ease-in-out infinite;
+  }
+
+  @keyframes load {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  /* Scan line effect */
+  #scanline {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0,255,255,0.015) 3px,
+      rgba(0,255,255,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Error */
+  #error-msg {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: #000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 200;
+    text-align: center;
+    padding: 30px;
+  }
+
+  #error-msg p { font-size: 13px; line-height: 1.6; color: #ff4444; }
+  #error-msg small { font-size: 11px; color: #ffffff66; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="logo">DETEKSI</div>
+  <div class="sub">MEMUAT MODEL AI...</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+  <div style="font-size:10px;color:#00ffff44;letter-spacing:2px;">COCO-SSD · 80 KELAS OBJEK</div>
+</div>
+
+<div id="error-msg">
+  <p>⚠️ Gagal mengakses kamera</p>
+  <small>Pastikan kamu izinkan akses kamera di browser, lalu refresh halaman.</small>
+</div>
+
+<div id="wrapper">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="canvas"></canvas>
+  <div id="scanline"></div>
+
+  <div id="hud-top">
+    <span class="title">SCAN</span>
+    <span id="count-badge">0 OBJEK</span>
+  </div>
+
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <div id="hud-bottom">
+    <span id="status">MENGINISIALISASI...</span>
+    <span id="fps-display">-- FPS</span>
+  </div>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const loading = document.getElementById('loading');
+const errorMsg = document.getElementById('error-msg');
+const countBadge = document.getElementById('count-badge');
+const statusEl = document.getElementById('status');
+const fpsDis = document.getElementById('fps-display');
+
+// Color per class
+const classColors = {};
+const palette = ['#00ffff','#ff00ff','#ffff00','#00ff88','#ff6600','#ff0066','#66ff00','#0088ff'];
+let colorIdx = 0;
+
+function getColor(cls) {
+  if (!classColors[cls]) {
+    classColors[cls] = palette[colorIdx % palette.length];
+    colorIdx++;
+  }
+  return classColors[cls];
+}
+
+// FPS
+let lastTime = performance.now();
+let frameCount = 0;
+let fps = 0;
+
+function updateFPS() {
+  frameCount++;
+  const now = performance.now();
+  const delta = now - lastTime;
+  if (delta >= 1000) {
+    fps = Math.round(frameCount * 1000 / delta);
+    frameCount = 0;
+    lastTime = now;
+    fpsDis.textContent = `${fps} FPS`;
+  }
+}
+
+async function setupCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    return new Promise(resolve => video.onloadedmetadata = resolve);
+  } catch (e) {
+    loading.style.display = 'none';
+    errorMsg.style.display = 'flex';
+    throw e;
+  }
+}
+
+function resizeCanvas() {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+}
+
+function drawDetections(predictions) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  predictions.forEach(pred => {
+    const [x, y, w, h] = pred.bbox;
+    const color = getColor(pred.class);
+    const conf = Math.round(pred.score * 100);
+    const label = `${pred.class.toUpperCase()} ${conf}%`;
+
+    // Glow box
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.shadowBlur = 0;
+
+    // Corner accents
+    const cLen = 14;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    // TL
+    ctx.beginPath(); ctx.moveTo(x, y + cLen); ctx.lineTo(x, y); ctx.lineTo(x + cLen, y); ctx.stroke();
+    // TR
+    ctx.beginPath(); ctx.moveTo(x + w - cLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cLen); ctx.stroke();
+    // BL
+    ctx.beginPath(); ctx.moveTo(x, y + h - cLen); ctx.lineTo(x, y + h); ctx.lineTo(x + cLen, y + h); ctx.stroke();
+    // BR
+    ctx.beginPath(); ctx.moveTo(x + w - cLen, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - cLen); ctx.stroke();
+
+    // Label background
+    ctx.font = 'bold 14px Courier New';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(x, y - 24, tw + 12, 22);
+
+    // Label border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y - 24, tw + 12, 22);
+
+    // Label text
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.fillText(label, x + 6, y - 7);
+    ctx.shadowBlur = 0;
+
+    // Center crosshair
+    const cx = x + w / 2, cy = y + h / 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+}
+
+async function main() {
+  await setupCamera();
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  statusEl.textContent = 'MEMUAT MODEL...';
+
+  let model;
+  try {
+    model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+  } catch (e) {
+    statusEl.textContent = 'GAGAL MEMUAT MODEL';
+    loading.style.display = 'none';
+    return;
+  }
+
+  loading.style.display = 'none';
+  statusEl.textContent = 'AKTIF · MENDETEKSI';
+
+  async function detect() {
+    resizeCanvas();
+    const predictions = await model.detect(video);
+    drawDetections(predictions);
+
+    const n = predictions.length;
+    countBadge.textContent = `${n} OBJEK`;
+
+    updateFPS();
+    requestAnimationFrame(detect);
+  }
+
+  detect();
+}
+
+main();
+</script>
+</body>
+</html>
