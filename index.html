@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Deteksi Objek</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+</head>
+<body>
+
+  <div id="loading">
+    <div class="logo">DETEKSI</div>
+    <div class="sub">MEMUAT MODEL AI...</div>
+    <div class="loader-bar"><div class="loader-fill"></div></div>
+    <div class="info-text">COCO-SSD · 80 KELAS OBJEK</div>
+  </div>
+
+  <div id="error-msg">
+    <p>⚠️ Gagal mengakses kamera</p>
+    <small>Pastikan kamu izinkan akses kamera di browser, lalu refresh halaman.</small>
+  </div>
+
+  <div id="wrapper">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div id="scanline"></div>
+
+    <div id="hud-top">
+      <span class="title">SCAN</span>
+      <span id="count-badge">0 OBJEK</span>
+    </div>
+
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+
+    <div id="hud-bottom">
+      <span id="status">MENGINISIALISASI...</span>
+      <span id="fps-display">-- FPS</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+  </html>
+  
